@@ -1,13 +1,16 @@
 
-  import 'dart:convert';
+
+import 'dart:convert';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_app/model/movie_data.dart';
+import 'package:flutter_app/model/movie_title_store.dart';
 import 'package:flutter_app/utils/SizeConfig.dart';
 import 'package:flutter_app/views/movie_details_screen.dart';
-  import 'package:http/http.dart' as http;
-
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 
   Color bottomNavBarColor = new Color(0xff181617);
@@ -30,6 +33,10 @@ import 'package:flutter_app/views/movie_details_screen.dart';
 
   List data;
 
+  MovieData _movieData;
+
+  LocalStore _localStore = LocalStore();
+
 
 class HomeScreen extends StatefulWidget {
     @override
@@ -48,9 +55,9 @@ class HomeScreen extends StatefulWidget {
       _tabController = TabController(vsync: this, length: 3);
       _pageController = PageController(initialPage: _pageIndex);
       _tabController.addListener(_handleTabSelection);
-      this.getJSONData();
-
+      main();
     }
+
 
     void _handleTabSelection() {
       if (_tabController.indexIsChanging) {
@@ -168,6 +175,9 @@ class HomeScreen extends StatefulWidget {
                   ),
                   title: Text(
                     '',
+                    style: TextStyle(
+                      fontSize: 0
+                    ),
                   )
               ),
               BottomNavigationBarItem(
@@ -177,6 +187,9 @@ class HomeScreen extends StatefulWidget {
                   ),
                   title: Text(
                     '',
+                    style: TextStyle(
+                        fontSize: 0
+                    ),
                   )
               ),
               BottomNavigationBarItem(
@@ -186,6 +199,9 @@ class HomeScreen extends StatefulWidget {
                   ),
                   title: Text(
                     '',
+                    style: TextStyle(
+                        fontSize: 0
+                    ),
                   )
               ),
               BottomNavigationBarItem(
@@ -195,6 +211,9 @@ class HomeScreen extends StatefulWidget {
                   ),
                   title: Text(
                     '',
+                    style: TextStyle(
+                        fontSize: 0
+                    ),
                   )
               )
             ],
@@ -211,10 +230,6 @@ class HomeScreen extends StatefulWidget {
       setState(() {
         _pageIndex = page;
       });
-    }
-
-    void _onTabTapped(int index) {
-      _pageController.animateToPage(index,duration: const Duration(milliseconds: 500),curve: Curves.easeInOut);
     }
 
     void onTabBarClicked(int index){
@@ -371,67 +386,93 @@ class HomeScreen extends StatefulWidget {
       }
     }
 
-    Future<String> getJSONData() async {
-      var response = await http.get(
-        // Encode the url
-          Uri.encodeFull("http://www.omdbapi.com/?s=Movies&apikey=5661d041"),
-          // Only accept JSON response
-          headers: {"Accept": "application/json"}
-      );
 
-      setState(() {
-        // Get the JSON data
-        data = json.decode(response.body)['Search'];
-      });
+    void main() async {
+      // This example uses the Google Books API to search for books about http.
+      // https://developers.google.com/books/docs/overview
+      var url = 'http://www.omdbapi.com/?s=Movies&apikey=5661d041';
 
-      return "Successfull";
+      // Await the http get response, then decode the json-formatted response.
+      var response = await http.get(url).timeout(Duration(
+        seconds: 2000
+      ));
+      if (response.statusCode == 200) {
+        var jsonResponse = json.decode(response.body);
+        print(jsonResponse.toString());
+        setState(() {
+          _movieData = MovieData.fromJson(jsonResponse);
+        });
+
+      } else {
+        print('Request failed with status: ${response.statusCode}.');
+      }
+
+
     }
-
 
     Widget _buildListView() {
       return Container(
         height: SizeConfig.safeBlockVertical * 35,
-        child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.all(5.0),
-            itemCount: data == null ? 0 : data.length,
-            itemBuilder: (context, index) {
-              return InkWell(
-                onTap: (){
-                  String title = data[index]['Title'].toString();
-                  Navigator.push(
-                    context,
-                    new MaterialPageRoute(
-                      builder: (context) {
-                        return MovieDetailsScreen(title);
-                      },
-                    ),
-                  );
-                },
-                child: _buildImageColumn(data[index]),
-              );
-            }
-        ),
+        child: _moviesListView(_movieData),
+      );
+    }
+
+    Widget _moviesListView(MovieData movieData){
+      return ListView.builder(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.all(5.0),
+          itemCount: movieData == null ? 0 : movieData.search.length,
+          itemBuilder: (context, index) {
+            return InkWell(
+              onTap: (){
+                String title = movieData.search[index].title;
+                print("Selected Movie Title: "+title);
+                _localStore.storeMovieTitle(title);
+                Navigator.push(
+                  context,
+                  new MaterialPageRoute(
+                    builder: (context) {
+                      return MovieDetailsScreen();
+                    },
+                  ),
+                );
+              },
+              child: _buildImageColumn(movieData.search[index]),
+            );
+          }
       );
     }
 
 
 
-    Widget _buildImageColumn(dynamic item) =>
-        Container(
-          width: 150,
-      decoration: BoxDecoration(
-          color: Colors.white54
-      ),
-      margin: const EdgeInsets.all(10),
-      child: new CachedNetworkImage(
-        imageUrl: item['Poster'],
-        placeholder: (context, url) => new CircularProgressIndicator(),
-        errorWidget: (context, url, error) => new Icon(Icons.error),
-        fadeOutDuration: new Duration(seconds: 1),
-        fadeInDuration: new Duration(seconds: 3),
-      )
-    );
+    Widget _buildImageColumn(Search search) =>
+
+        Padding(
+          padding: EdgeInsets.all(5),
+          child: Card(
+              clipBehavior: Clip.antiAlias,
+              elevation: 4,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20.0),
+              ),
+              child: Container(
+                  width: 150,
+                  decoration: BoxDecoration(
+                      color: CupertinoColors.black
+                  ),
+                  child: new CachedNetworkImage(
+                    imageUrl: search.poster,
+                    placeholder: (context, url) => new CircularProgressIndicator(),
+                    errorWidget: (context, url, error) => new Icon(Icons.error),
+                    fadeOutDuration: new Duration(seconds: 1),
+                    fadeInDuration: new Duration(seconds: 3),
+                  )
+              )
+          ),
+        );
+
+
+
 
 }
 
